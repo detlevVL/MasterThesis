@@ -1,0 +1,12 @@
+{
+    \"Name\" : \"MaintenanceHelper\",
+    \"Version\" : \"0.0.1\",
+    \"CompatVersion\" : \"0.0.1\",
+    \"Vendor\" : \"VendorName\",
+    \"Copyright\" : \"\",
+    \"License\" : \"\",
+    \"Description\" : \"Test maintenance helper\",
+    \"Url\" : \"\",
+    $$dependencyList
+}
+
