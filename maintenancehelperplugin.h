@@ -25,10 +25,16 @@ public:
 
 private slots:
     void triggerStartTracking();
+    void triggerStartAnalysis();
 
 private:
-    void scanDirectory(const QFileInfoList &fileInfoList);
-    QStringList trackedProjs;
+    void namingAnalysis(const QString &projectPath);
+    void loadLinks(const QString &projectPath);
+    void saveLinks(const QString &projectPath);
+    void scanDirectory(const QFileInfoList &fileInfoList, QStringList &sources, QStringList &tests);
+
+    QMap<QString,QString> trackedProjects;
+    QMultiHash<QString,QString> projectLinks;
 };
 
 } // namespace Internal

@@ -9,7 +9,7 @@
 #include <coreplugin/coreconstants.h>
 
 #include <QAction>
-#include <QFileDialog>
+#include <QInputDialog>
 #include <QMessageBox>
 #include <QMainWindow>
 #include <QMenu>
@@ -48,22 +48,27 @@ bool MaintenanceHelperPlugin::initialize(const QStringList &arguments, QString *
     QSettings settings(QString::fromStdString("Detlev"), QString::fromStdString("MaintenanceHelper"));
 
     // Tracked projects
-    QStringList allKeys = settings.allKeys();
-    for (int i = 0; i < allKeys.size(); i++) {
-        if (allKeys.at(i).endsWith(QString::fromStdString(".pro"))) {
-            trackedProjs.append(settings.value(allKeys.at(i)).toString());
+    foreach (const QString &key, settings.allKeys()) {
+        if (key.endsWith(QString::fromStdString(".pro"))) {
+            trackedProjects.insert(key, settings.value(key).toString());
         }
     }
 
     // Add actions to menus
     QAction *startTracking = new QAction(tr("Start Tracking Project"), this);
-    Core::Command *cmd = Core::ActionManager::registerAction(startTracking, Constants::STARTTRACKING_ID,
+    Core::Command *startTrackingCmd = Core::ActionManager::registerAction(startTracking, Constants::STARTTRACKING_ID,
                                                              Core::Context(Core::Constants::C_GLOBAL));
     connect(startTracking, SIGNAL(triggered()), this, SLOT(triggerStartTracking()));
 
+    QAction *startAnalysis = new QAction(tr("Do Project Analysis"), this);
+    Core::Command *startAnalysisCmd = Core::ActionManager::registerAction(startAnalysis, Constants::STARTANALYSIS_ID,
+                                                             Core::Context(Core::Constants::C_GLOBAL));
+    connect(startAnalysis, SIGNAL(triggered()), this, SLOT(triggerStartAnalysis()));
+
     Core::ActionContainer *menu = Core::ActionManager::createMenu(Constants::MENU_ID);
     menu->menu()->setTitle(tr("MaintenanceHelper"));
-    menu->addAction(cmd);
+    menu->addAction(startTrackingCmd);
+    menu->addAction(startAnalysisCmd);
     Core::ActionManager::actionContainer(Core::Constants::M_TOOLS)->addMenu(menu);
 
     return true;
@@ -86,65 +91,129 @@ ExtensionSystem::IPlugin::ShutdownFlag MaintenanceHelperPlugin::aboutToShutdown(
 
 void MaintenanceHelperPlugin::triggerStartTracking()
 {
+    // select project to track
     QString fileName = QFileDialog::getOpenFileName(Core::ICore::mainWindow(), tr("Open File"),
                                               tr(""),
                                               tr("Project Files (*.pro)"));
 
-    if (fileName.isEmpty()) {
-        // no file selected
-        return;
+    if (!fileName.isEmpty()) {
+        QString project = fileName.section(QString::fromStdString("/"), -1);
+        QString projectPath = fileName.section(QString::fromStdString("/"), 0, -2);
+
+        if (trackedProjects.contains(project)) {
+            // already tracking project
+            QMessageBox::warning(Core::ICore::mainWindow(),
+                                 tr("Tracking failed"),
+                                 tr("This project is already being tracked"));
+        } else {
+            // add to tracked projects
+            QSettings settings(QString::fromStdString("Detlev"), QString::fromStdString("MaintenanceHelper"));
+            settings.setValue(project, projectPath);
+            trackedProjects.insert(project, projectPath);
+        }
     }
+}
 
-    QString project = fileName.section(QString::fromStdString("/"), -1);
-    QString projectPath = fileName.section(QString::fromStdString("/"), 0, -2);
+void MaintenanceHelperPlugin::triggerStartAnalysis()
+{
+    // select project to analyse
+    QStringList projects = trackedProjects.keys();
+    bool ok;
+    QString project = QInputDialog::getItem(Core::ICore::mainWindow(), tr("Project Analysis"),
+                                         tr("Select Project"), projects, 0, false, &ok);
+    if (ok && !project.isEmpty()) {
+        QString projectPath = trackedProjects.value(project);
+        // load existing links
+        loadLinks(projectPath);
 
-    if (trackedProjs.contains(projectPath)) {
-        // already tracking project
-        QMessageBox::warning(Core::ICore::mainWindow(),
-                             tr("Tracking failed"),
-                             tr("This project is already being tracked"));
-        return;
+        // do analyses
+        namingAnalysis(projectPath);
+        // other analyses
+
+        // save links
+        saveLinks(projectPath);
     }
+}
 
+void MaintenanceHelperPlugin::namingAnalysis(const QString &projectPath)
+{
+    QStringList sources;
+    QStringList tests;
     QFileInfoList fileInfoList = QDir(projectPath).entryInfoList(QStringList(QString::fromStdString("*.qml")),
                                                                  QDir::NoDotAndDotDot | QDir::Files | QDir::AllDirs,
                                                                  QDir::DirsLast);
-    scanDirectory(fileInfoList);
+    scanDirectory(fileInfoList, sources, tests);
 
-    // add to tracked projects
-    QSettings settings(QString::fromStdString("Detlev"), QString::fromStdString("MaintenanceHelper"));
-    settings.setValue(project, projectPath);
-    trackedProjs.append(projectPath);
+    foreach (const QString &test, tests) {
+        QString possibleSource = test.section(QString::fromStdString("_"), 1);
 
-    // TODO
-    /*
-    QMessageBox::information(Core::ICore::mainWindow(),
-                             tr("Tracking started"),
-                             tr("Found X source files and X test files"));
-    */
+        foreach (const QString &source, sources) {
+            if (QString::compare(source,possibleSource, Qt::CaseInsensitive) == 0 && !projectLinks.contains(source,test)) {
+                projectLinks.insert(source,test);
+            }
+        }
+    }
 }
 
-void MaintenanceHelperPlugin::scanDirectory(const QFileInfoList &fileInfoList)
+void MaintenanceHelperPlugin::loadLinks(const QString &projectPath)
 {
-    for (int i = 0; i < fileInfoList.size(); i++) {
-        if (fileInfoList.at(i).isDir()) {
+    projectLinks.clear();
+    QFile linksFile(projectPath + QString::fromStdString("/links.txt"));
+
+    if (linksFile.exists()) {
+        linksFile.open(QFile::ReadOnly | QFile::Text);
+        QTextStream in(&linksFile);
+
+        QString line = in.readLine();
+        while (!line.isNull()) {
+            QString source = line.section(QString::fromStdString(":"), 0, 0);
+            QString tests = line.section(QString::fromStdString(":"), 1, 1);
+
+            foreach (const QString &test, tests.split(QString::fromStdString(","), QString::SkipEmptyParts)) {
+                projectLinks.insert(source, test);
+            }
+
+            line = in.readLine();
+        }
+    }
+}
+
+void MaintenanceHelperPlugin::saveLinks(const QString &projectPath)
+{
+    QFile linksFile(projectPath + QString::fromStdString("/links.txt"));
+    linksFile.open(QFile::ReadWrite | QFile::Truncate | QFile::Text);
+    QTextStream out(&linksFile);
+
+    foreach (const QString &source, projectLinks.uniqueKeys()) {
+        out << source << ":";
+        foreach (const QString &test, projectLinks.values(source)) {
+            out << test << ",";
+        }
+        out << endl;
+    }
+
+    linksFile.close();
+}
+
+void MaintenanceHelperPlugin::scanDirectory(const QFileInfoList &fileInfoList, QStringList &sources, QStringList &tests)
+{
+    foreach (const QFileInfo &fileInfo, fileInfoList) {
+        if (fileInfo.isDir()) {
             // scan subdirectory
-            QDir subDir = QDir(fileInfoList.at(i).absoluteFilePath());
+            QDir subDir = QDir(fileInfo.absoluteFilePath());
             QFileInfoList subFileInfoList = subDir.entryInfoList(QStringList(QString::fromStdString("*.qml")),
                                                                  QDir::NoDotAndDotDot | QDir::Files | QDir::AllDirs,
                                                                  QDir::DirsLast);
-            scanDirectory(subFileInfoList);
+            scanDirectory(subFileInfoList, sources, tests);
         } else {
-            // TODO: add to source/test files list
-            QString fileName = fileInfoList.at(i).baseName();
+            // add to sources/tests list
+            QString fileName = fileInfo.baseName();
 
             if (fileName.startsWith(QString::fromStdString("tst_"))) {
-                cout << "TEST:   ";
+                tests.append(fileName);
             } else {
-                cout << "SOURCE: ";
+                sources.append(fileName);
             }
-
-            cout << fileName.toStdString() << endl;
         }
     }
 }

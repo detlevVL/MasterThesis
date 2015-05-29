@@ -5,6 +5,7 @@ namespace MaintenanceHelper {
 namespace Constants {
 
 const char STARTTRACKING_ID[] = "MaintenanceHelper.StartTracking";
+const char STARTANALYSIS_ID[] = "MaintenanceHelper.StartAnalysis";
 const char MENU_ID[] = "MaintenanceHelper.Menu";
 
 } // namespace MaintenanceHelper
