@@ -32,7 +32,7 @@ isEmpty(IDE_BUILD_TREE):IDE_BUILD_TREE=/home/detlev/qtcreator-build-copy
 
 QTC_PLUGIN_NAME = MaintenanceHelper
 QTC_LIB_DEPENDS += \
-    # nothing here at this time
+    qmljs
 
 QTC_PLUGIN_DEPENDS += \
     coreplugin

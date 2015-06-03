@@ -17,6 +17,7 @@
 #include <QtPlugin>
 
 #include <iostream>
+
 using namespace std;
 
 using namespace MaintenanceHelper::Internal;
@@ -47,12 +48,15 @@ bool MaintenanceHelperPlugin::initialize(const QStringList &arguments, QString *
     // Load settings
     QSettings settings(QString::fromStdString("Detlev"), QString::fromStdString("MaintenanceHelper"));
 
-    // Tracked projects
+    // Tracked projects settings
     foreach (const QString &key, settings.allKeys()) {
         if (key.endsWith(QString::fromStdString(".pro"))) {
             trackedProjects.insert(key, settings.value(key).toString());
         }
     }
+
+    // Load file changes
+    loadFileChanges();
 
     // Add actions to menus
     QAction *startTracking = new QAction(tr("Start Tracking Project"), this);
@@ -79,6 +83,10 @@ void MaintenanceHelperPlugin::extensionsInitialized()
     // Retrieve objects from the plugin manager's object pool
     // In the extensionsInitialized function, a plugin can be sure that all
     // plugins that depend on it are completely initialized.
+
+    // connect to qmljs library signals
+    connect(ModelManagerInterface::instance(), SIGNAL(documentChangedOnDisk(QmlJS::Document::Ptr)), this, SLOT(fileModified(QmlJS::Document::Ptr)));
+    connect(ModelManagerInterface::instance(), SIGNAL(aboutToRemoveFiles(QStringList)), this, SLOT(fileDeleted(QStringList)));
 }
 
 ExtensionSystem::IPlugin::ShutdownFlag MaintenanceHelperPlugin::aboutToShutdown()
@@ -86,6 +94,13 @@ ExtensionSystem::IPlugin::ShutdownFlag MaintenanceHelperPlugin::aboutToShutdown(
     // Save settings
     // Disconnect from signals that are not needed during shutdown
     // Hide UI (if you add UI that is not in the main window directly)
+
+    // Save file changes
+    saveFileChanges();
+
+    // Disconnect from qmljs library signals
+    disconnect(ModelManagerInterface::instance(), 0, this, 0);
+
     return SynchronousShutdown;
 }
 
@@ -193,6 +208,7 @@ void MaintenanceHelperPlugin::saveLinks(const QString &projectPath)
     }
 
     linksFile.close();
+    projectLinks.clear();
 }
 
 void MaintenanceHelperPlugin::scanDirectory(const QFileInfoList &fileInfoList, QStringList &sources, QStringList &tests)
@@ -216,6 +232,84 @@ void MaintenanceHelperPlugin::scanDirectory(const QFileInfoList &fileInfoList, Q
             }
         }
     }
+}
+
+void MaintenanceHelperPlugin::fileModified(QmlJS::Document::Ptr doc)
+{
+    foreach (const QString &projectPath, trackedProjects.values()) {
+        if (doc->path().contains(projectPath) && !modifiedFiles.contains(projectPath, doc->fileName())) {
+            modifiedFiles.insert(projectPath, doc->fileName());
+        }
+    }
+}
+
+void MaintenanceHelperPlugin::fileDeleted(const QStringList &files)
+{
+    foreach (const QString &file, files) {
+        foreach (const QString &projectPath, trackedProjects.values()) {
+            if (file.contains(projectPath) && !deletedFiles.contains(projectPath, file)) {
+                modifiedFiles.remove(projectPath, file);
+                deletedFiles.insert(projectPath, file);
+            }
+        }
+    }
+}
+
+void MaintenanceHelperPlugin::loadFileChanges()
+{
+    modifiedFiles.clear();
+    deletedFiles.clear();
+
+    foreach (const QString &projectPath, trackedProjects.values()) {
+        QFile changesFile(projectPath + QString::fromStdString("/changes.txt"));
+
+        if (changesFile.exists()) {
+            changesFile.open(QFile::ReadOnly | QFile::Text);
+            QTextStream in(&changesFile);
+
+            QString line = in.readLine();
+            while (!line.isNull()) {
+                QString change = line.section(QString::fromStdString(":"), 0, 0);
+                QString files = line.section(QString::fromStdString(":"), 1, 1);
+
+                foreach (const QString &file, files.split(QString::fromStdString(","), QString::SkipEmptyParts)) {
+                    if (change == QString::fromStdString("modified")) {
+                        modifiedFiles.insert(projectPath, file);
+                    } else if (change == QString::fromStdString("deleted")) {
+                        deletedFiles.insert(projectPath, file);
+                    }
+                }
+
+                line = in.readLine();
+            }
+        }
+    }
+}
+
+void MaintenanceHelperPlugin::saveFileChanges()
+{
+    foreach (const QString &projectPath, trackedProjects.values()) {
+        QFile changesFile(projectPath + QString::fromStdString("/changes.txt"));
+        changesFile.open(QFile::ReadWrite | QFile::Truncate | QFile::Text);
+        QTextStream out(&changesFile);
+
+        out << "modified" << ":";
+        foreach (const QString &file, modifiedFiles.values(projectPath)) {
+            out << file << ",";
+        }
+        out << endl;
+
+        out << "deleted" << ":";
+        foreach (const QString &file, deletedFiles.values(projectPath)) {
+            out << file << ",";
+        }
+        out << endl;
+
+        changesFile.close();
+    }
+
+    modifiedFiles.clear();
+    deletedFiles.clear();
 }
 
 
