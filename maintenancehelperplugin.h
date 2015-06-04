@@ -30,6 +30,7 @@ public:
 private slots:
     void triggerStartTracking();
     void triggerStartAnalysis();
+    void triggerGiveHelp();
     void fileModified(QmlJS::Document::Ptr doc);
     void fileDeleted(const QStringList &files);
 
@@ -40,6 +41,7 @@ private:
     void scanDirectory(const QFileInfoList &fileInfoList, QStringList &sources, QStringList &tests);
     void loadFileChanges();
     void saveFileChanges();
+    void maintenanceHelp(const QString &projectPath);
 
     QMap<QString,QString> trackedProjects;
     QMultiHash<QString,QString> projectLinks;
