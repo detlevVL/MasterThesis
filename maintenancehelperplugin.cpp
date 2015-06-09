@@ -13,6 +13,7 @@
 #include <QMessageBox>
 #include <QMainWindow>
 #include <QMenu>
+#include <QPlainTextEdit>
 
 #include <QtPlugin>
 
@@ -358,17 +359,26 @@ void MaintenanceHelperPlugin::saveFileChanges()
 
 void MaintenanceHelperPlugin::maintenanceHelp(const QString &projectPath)
 {
+    QString theHelp;
+
     foreach (const QString &file, modifiedFiles.values(projectPath)) {
         QString baseName = file.section(QString::fromStdString("/"), -1);
 
         if (!baseName.startsWith(QString::fromStdString("tst_"))) {
-            cout << "Modified " << baseName.toStdString() << ", check:" << endl;
+            // cout << "Modified " << baseName.toStdString() << ", check:" << endl;
+            theHelp.append(QString::fromStdString("Modified "));
+            theHelp.append(baseName);
+            theHelp.append(QString::fromStdString(", check:\n"));
 
             foreach (const QString &test, projectLinks.values(file)) {
-                cout << "   " << test.toStdString() << endl;
+                // cout << "   " << test.toStdString() << endl;
+                theHelp.append(QString::fromStdString("   "));
+                theHelp.append(test);
+                theHelp.append(QString::fromStdString("\n"));
             }
 
-            cout << endl;
+            // cout << endl;
+            theHelp.append(QString::fromStdString("\n"));
         }
     }
 
@@ -376,14 +386,26 @@ void MaintenanceHelperPlugin::maintenanceHelp(const QString &projectPath)
         QString baseName = file.section(QString::fromStdString("/"), -1);
 
         if (!baseName.startsWith(QString::fromStdString("tst_"))) {
-            cout << "Deleted " << baseName.toStdString() << ", check:" << endl;
+            // cout << "Deleted " << baseName.toStdString() << ", check:" << endl;
+            theHelp.append(QString::fromStdString("Deleted "));
+            theHelp.append(baseName);
+            theHelp.append(QString::fromStdString(", check:\n"));
 
             foreach (const QString &test, projectLinks.values(file)) {
-                cout << "   " << test.toStdString() << endl;
+                // cout << "   " << test.toStdString() << endl;
+                theHelp.append(QString::fromStdString("   "));
+                theHelp.append(test);
+                theHelp.append(QString::fromStdString("\n"));
             }
 
-            cout << endl;
+            // cout << endl;
+            theHelp.append(QString::fromStdString("\n"));
         }
     }
+
+    QPlainTextEdit *text = new QPlainTextEdit(theHelp);
+    text->setReadOnly(true);
+    text->setWindowTitle(QString::fromStdString("Maintenance Help"));
+    text->show();
 }
 
