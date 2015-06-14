@@ -2,11 +2,13 @@ DEFINES += MAINTENANCEHELPER_LIBRARY
 
 # MaintenanceHelper files
 
-SOURCES += maintenancehelperplugin.cpp
+SOURCES += maintenancehelperplugin.cpp \
+    projecttraceability.cpp
 
 HEADERS += maintenancehelperplugin.h \
         maintenancehelper_global.h \
-        maintenancehelperconstants.h
+        maintenancehelperconstants.h \
+    projecttraceability.h
 
 # Qt Creator linking
 

@@ -6,6 +6,7 @@
 #include <extensionsystem/iplugin.h>
 
 #include <qmljs/qmljsmodelmanagerinterface.h>
+#include <projecttraceability.h>
 
 #include <QFileDialog>
 
@@ -35,16 +36,12 @@ private slots:
     void fileDeleted(const QStringList &files);
 
 private:
-    void namingAnalysis(const QString &projectPath);
-    void loadLinks(const QString &projectPath);
-    void saveLinks(const QString &projectPath);
-    void scanDirectory(const QFileInfoList &fileInfoList, QStringList &sources, QStringList &tests);
     void loadFileChanges();
     void saveFileChanges();
-    void maintenanceHelp(const QString &projectPath);
+    void maintenanceHelp(const QString &project);
 
     QMap<QString,QString> trackedProjects;
-    QMultiHash<QString,QString> projectLinks;
+    QMap<QString,ProjectTraceability*> projectTraceabilities;
     QMultiHash<QString,QString> modifiedFiles;
     QMultiHash<QString,QString> deletedFiles;
 };

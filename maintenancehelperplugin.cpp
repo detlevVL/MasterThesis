@@ -53,6 +53,7 @@ bool MaintenanceHelperPlugin::initialize(const QStringList &arguments, QString *
     foreach (const QString &key, settings.allKeys()) {
         if (key.endsWith(QString::fromStdString(".pro"))) {
             trackedProjects.insert(key, settings.value(key).toString());
+            projectTraceabilities.insert(key, new ProjectTraceability(settings.value(key).toString()));
         }
     }
 
@@ -132,6 +133,7 @@ void MaintenanceHelperPlugin::triggerStartTracking()
             QSettings settings(QString::fromStdString("Detlev"), QString::fromStdString("MaintenanceHelper"));
             settings.setValue(project, projectPath);
             trackedProjects.insert(project, projectPath);
+            projectTraceabilities.insert(project, new ProjectTraceability(projectPath));
             QMessageBox::information(Core::ICore::mainWindow(),
                                      tr("Tracking started"),
                                      tr("Now tracking: ").append(project));
@@ -154,16 +156,7 @@ void MaintenanceHelperPlugin::triggerStartAnalysis()
                                              tr("Select Project"), projects, 0, false, &ok);
 
         if (ok && !project.isEmpty()) {
-            QString projectPath = trackedProjects.value(project);
-            // load existing links
-            loadLinks(projectPath);
-
-            // do analyses
-            namingAnalysis(projectPath);
-            // other analyses
-
-            // save links
-            saveLinks(projectPath);
+            projectTraceabilities.value(project)->createLinks();
 
             QMessageBox::information(Core::ICore::mainWindow(),
                                      tr("Analysis complete"),
@@ -186,95 +179,7 @@ void MaintenanceHelperPlugin::triggerGiveHelp()
         QString project = QInputDialog::getItem(Core::ICore::mainWindow(), tr("Maintenance Help"),
                                              tr("Select Project"), projects, 0, false, &ok);
         if (ok && !project.isEmpty()) {
-            QString projectPath = trackedProjects.value(project);
-            // load project links
-            loadLinks(projectPath);
-
-            maintenanceHelp(projectPath);
-
-            projectLinks.clear();
-        }
-    }
-}
-
-void MaintenanceHelperPlugin::namingAnalysis(const QString &projectPath)
-{
-    QStringList sources;
-    QStringList tests;
-    QFileInfoList fileInfoList = QDir(projectPath).entryInfoList(QStringList(QString::fromStdString("*.qml")),
-                                                                 QDir::NoDotAndDotDot | QDir::Files | QDir::AllDirs,
-                                                                 QDir::DirsLast);
-    scanDirectory(fileInfoList, sources, tests);
-
-    foreach (const QString &test, tests) {
-        QString possibleSource = test.section(QString::fromStdString("_"), 1);
-
-        foreach (const QString &source, sources) {
-            if (source.contains(possibleSource, Qt::CaseInsensitive) && !projectLinks.contains(source,test)) {
-                projectLinks.insert(source, test);
-            }
-        }
-    }
-}
-
-void MaintenanceHelperPlugin::loadLinks(const QString &projectPath)
-{
-    projectLinks.clear();
-    QFile linksFile(projectPath + QString::fromStdString("/MHlinks.txt"));
-
-    if (linksFile.exists()) {
-        linksFile.open(QFile::ReadOnly | QFile::Text);
-        QTextStream in(&linksFile);
-
-        QString line = in.readLine();
-        while (!line.isNull()) {
-            QString source = line.section(QString::fromStdString(":"), 0, 0);
-            QString tests = line.section(QString::fromStdString(":"), 1, 1);
-
-            foreach (const QString &test, tests.split(QString::fromStdString(","), QString::SkipEmptyParts)) {
-                projectLinks.insert(source, test);
-            }
-
-            line = in.readLine();
-        }
-    }
-}
-
-void MaintenanceHelperPlugin::saveLinks(const QString &projectPath)
-{
-    QFile linksFile(projectPath + QString::fromStdString("/MHlinks.txt"));
-    linksFile.open(QFile::ReadWrite | QFile::Truncate | QFile::Text);
-    QTextStream out(&linksFile);
-
-    foreach (const QString &source, projectLinks.uniqueKeys()) {
-        out << source << ":";
-        foreach (const QString &test, projectLinks.values(source)) {
-            out << test << ",";
-        }
-        out << endl;
-    }
-
-    linksFile.close();
-    projectLinks.clear();
-}
-
-void MaintenanceHelperPlugin::scanDirectory(const QFileInfoList &fileInfoList, QStringList &sources, QStringList &tests)
-{
-    foreach (const QFileInfo &fileInfo, fileInfoList) {
-        if (fileInfo.isDir()) {
-            // scan subdirectory
-            QDir subDir = QDir(fileInfo.absoluteFilePath());
-            QFileInfoList subFileInfoList = subDir.entryInfoList(QStringList(QString::fromStdString("*.qml")),
-                                                                 QDir::NoDotAndDotDot | QDir::Files | QDir::AllDirs,
-                                                                 QDir::DirsLast);
-            scanDirectory(subFileInfoList, sources, tests);
-        } else {
-            // add to sources/tests list
-            if (fileInfo.baseName().startsWith(QString::fromStdString("tst_"))) {
-                tests.append(fileInfo.filePath());
-            } else {
-                sources.append(fileInfo.filePath());
-            }
+            maintenanceHelp(project);
         }
     }
 }
@@ -357,27 +262,26 @@ void MaintenanceHelperPlugin::saveFileChanges()
     deletedFiles.clear();
 }
 
-void MaintenanceHelperPlugin::maintenanceHelp(const QString &projectPath)
+void MaintenanceHelperPlugin::maintenanceHelp(const QString &project)
 {
+    projectTraceabilities.value(project)->loadLinks();
+    QString projectPath = trackedProjects.value(project);
     QString theHelp;
 
     foreach (const QString &file, modifiedFiles.values(projectPath)) {
         QString baseName = file.section(QString::fromStdString("/"), -1);
 
         if (!baseName.startsWith(QString::fromStdString("tst_"))) {
-            // cout << "Modified " << baseName.toStdString() << ", check:" << endl;
             theHelp.append(QString::fromStdString("Modified "));
             theHelp.append(baseName);
             theHelp.append(QString::fromStdString(", check:\n"));
 
-            foreach (const QString &test, projectLinks.values(file)) {
-                // cout << "   " << test.toStdString() << endl;
+            foreach (const QString &test, projectTraceabilities.value(project)->values(file)) {
                 theHelp.append(QString::fromStdString("   "));
                 theHelp.append(test);
                 theHelp.append(QString::fromStdString("\n"));
             }
 
-            // cout << endl;
             theHelp.append(QString::fromStdString("\n"));
         }
     }
@@ -386,19 +290,16 @@ void MaintenanceHelperPlugin::maintenanceHelp(const QString &projectPath)
         QString baseName = file.section(QString::fromStdString("/"), -1);
 
         if (!baseName.startsWith(QString::fromStdString("tst_"))) {
-            // cout << "Deleted " << baseName.toStdString() << ", check:" << endl;
             theHelp.append(QString::fromStdString("Deleted "));
             theHelp.append(baseName);
             theHelp.append(QString::fromStdString(", check:\n"));
 
-            foreach (const QString &test, projectLinks.values(file)) {
-                // cout << "   " << test.toStdString() << endl;
+            foreach (const QString &test, projectTraceabilities.value(project)->values(file)) {
                 theHelp.append(QString::fromStdString("   "));
                 theHelp.append(test);
                 theHelp.append(QString::fromStdString("\n"));
             }
 
-            // cout << endl;
             theHelp.append(QString::fromStdString("\n"));
         }
     }
