@@ -116,7 +116,7 @@ void MaintenanceHelperPlugin::triggerStartTracking()
 {
     // select project to track
     QString fileName = QFileDialog::getOpenFileName(Core::ICore::mainWindow(), tr("Open File"),
-                                              tr(""),
+                                              QDir::homePath(),
                                               tr("Project Files (*.pro)"));
 
     if (!fileName.isEmpty()) {
@@ -156,13 +156,21 @@ void MaintenanceHelperPlugin::triggerStartAnalysis()
                                              tr("Select Project"), projects, 0, false, &ok);
 
         if (ok && !project.isEmpty()) {
+            connect(projectTraceabilities.value(project), SIGNAL(linkCreationComplete(QString)), this, SLOT(analysisComplete(QString)));
             projectTraceabilities.value(project)->createLinks();
-
-            QMessageBox::information(Core::ICore::mainWindow(),
-                                     tr("Analysis complete"),
-                                     tr("Completed analysis: ").append(project));
         }
     }
+}
+
+void MaintenanceHelperPlugin::analysisComplete(QString projectPath)
+{
+    QString project = trackedProjects.key(projectPath);
+
+    QMessageBox::information(Core::ICore::mainWindow(),
+                             tr("Analysis complete"),
+                             tr("Completed analysis: ").append(project));
+
+    disconnect(projectTraceabilities.value(project), SIGNAL(linkCreationComplete(QString)), this, SLOT(analysisComplete(QString)));
 }
 
 void MaintenanceHelperPlugin::triggerGiveHelp()

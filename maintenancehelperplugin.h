@@ -34,6 +34,7 @@ private slots:
     void triggerGiveHelp();
     void fileModified(QmlJS::Document::Ptr doc);
     void fileDeleted(const QStringList &files);
+    void analysisComplete(QString projectPath);
 
 private:
     void loadFileChanges();

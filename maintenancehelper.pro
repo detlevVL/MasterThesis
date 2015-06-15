@@ -2,13 +2,16 @@ DEFINES += MAINTENANCEHELPER_LIBRARY
 
 # MaintenanceHelper files
 
+QT += network
+
 SOURCES += maintenancehelperplugin.cpp \
     projecttraceability.cpp
 
 HEADERS += maintenancehelperplugin.h \
         maintenancehelper_global.h \
         maintenancehelperconstants.h \
-    projecttraceability.h
+    projecttraceability.h \
+    eventinfo.h
 
 # Qt Creator linking
 
@@ -34,7 +37,8 @@ isEmpty(IDE_BUILD_TREE):IDE_BUILD_TREE=/home/detlev/qtcreator-build-copy
 
 QTC_PLUGIN_NAME = MaintenanceHelper
 QTC_LIB_DEPENDS += \
-    qmljs
+    qmljs \
+    qmldebug
 
 QTC_PLUGIN_DEPENDS += \
     coreplugin
