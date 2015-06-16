@@ -5,13 +5,15 @@ DEFINES += MAINTENANCEHELPER_LIBRARY
 QT += network
 
 SOURCES += maintenancehelperplugin.cpp \
-    projecttraceability.cpp
+    projecttraceability.cpp \
+    projectchanges.cpp
 
 HEADERS += maintenancehelperplugin.h \
         maintenancehelper_global.h \
         maintenancehelperconstants.h \
     projecttraceability.h \
-    eventinfo.h
+    eventinfo.h \
+    projectchanges.h
 
 # Qt Creator linking
 

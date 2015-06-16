@@ -6,9 +6,9 @@
 #include <extensionsystem/iplugin.h>
 
 #include <qmljs/qmljsmodelmanagerinterface.h>
-#include <projecttraceability.h>
 
-#include <QFileDialog>
+#include <projecttraceability.h>
+#include <projectchanges.h>
 
 using namespace QmlJS;
 
@@ -32,19 +32,14 @@ private slots:
     void triggerStartTracking();
     void triggerStartAnalysis();
     void triggerGiveHelp();
-    void fileModified(QmlJS::Document::Ptr doc);
-    void fileDeleted(const QStringList &files);
     void analysisComplete(QString projectPath);
 
 private:
-    void loadFileChanges();
-    void saveFileChanges();
     void maintenanceHelp(const QString &project);
 
-    QMap<QString,QString> trackedProjects;
-    QMap<QString,ProjectTraceability*> projectTraceabilities;
-    QMultiHash<QString,QString> modifiedFiles;
-    QMultiHash<QString,QString> deletedFiles;
+    QMap<QString,QString> trackedProjectsMap;
+    QMap<QString,ProjectTraceability*> projectTraceabilityMap;
+    QMap<QString,ProjectChanges*> projectChangesMap;
 };
 
 } // namespace Internal

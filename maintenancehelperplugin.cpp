@@ -9,6 +9,7 @@
 #include <coreplugin/coreconstants.h>
 
 #include <QAction>
+#include <QFileDialog>
 #include <QInputDialog>
 #include <QMessageBox>
 #include <QMainWindow>
@@ -52,13 +53,9 @@ bool MaintenanceHelperPlugin::initialize(const QStringList &arguments, QString *
     // Tracked projects settings
     foreach (const QString &key, settings.allKeys()) {
         if (key.endsWith(QString::fromStdString(".pro"))) {
-            trackedProjects.insert(key, settings.value(key).toString());
-            projectTraceabilities.insert(key, new ProjectTraceability(settings.value(key).toString()));
+            trackedProjectsMap.insert(key, settings.value(key).toString());
         }
     }
-
-    // Load file changes
-    loadFileChanges();
 
     // Add actions to menus
     QAction *startTracking = new QAction(tr("Start Tracking Project"), this);
@@ -92,9 +89,11 @@ void MaintenanceHelperPlugin::extensionsInitialized()
     // In the extensionsInitialized function, a plugin can be sure that all
     // plugins that depend on it are completely initialized.
 
-    // connect to qmljs library signals
-    connect(ModelManagerInterface::instance(), SIGNAL(documentChangedOnDisk(QmlJS::Document::Ptr)), this, SLOT(fileModified(QmlJS::Document::Ptr)));
-    connect(ModelManagerInterface::instance(), SIGNAL(aboutToRemoveFiles(QStringList)), this, SLOT(fileDeleted(QStringList)));
+    // fill the projectChanges and projectTraceabilities maps
+    foreach (const QString &project, trackedProjectsMap.keys()) {
+        projectChangesMap.insert(project, new ProjectChanges(trackedProjectsMap.value(project)));
+        projectTraceabilityMap.insert(project, new ProjectTraceability(trackedProjectsMap.value(project)));
+    }
 }
 
 ExtensionSystem::IPlugin::ShutdownFlag MaintenanceHelperPlugin::aboutToShutdown()
@@ -103,11 +102,11 @@ ExtensionSystem::IPlugin::ShutdownFlag MaintenanceHelperPlugin::aboutToShutdown(
     // Disconnect from signals that are not needed during shutdown
     // Hide UI (if you add UI that is not in the main window directly)
 
-    // Save file changes
-    saveFileChanges();
-
-    // Disconnect from qmljs library signals
-    disconnect(ModelManagerInterface::instance(), 0, this, 0);
+    // for each tracked project, save the file changes and disconnect from qmljs signals
+    foreach (const QString &project, trackedProjectsMap.keys()) {
+        projectChangesMap.value(project)->saveFileChanges();
+        disconnect(ModelManagerInterface::instance(), 0, projectChangesMap.value(project), 0);
+    }
 
     return SynchronousShutdown;
 }
@@ -115,7 +114,7 @@ ExtensionSystem::IPlugin::ShutdownFlag MaintenanceHelperPlugin::aboutToShutdown(
 void MaintenanceHelperPlugin::triggerStartTracking()
 {
     // select project to track
-    QString fileName = QFileDialog::getOpenFileName(Core::ICore::mainWindow(), tr("Open File"),
+    QString fileName = QFileDialog::getOpenFileName(Core::ICore::mainWindow(), tr("Select Project File"),
                                               QDir::homePath(),
                                               tr("Project Files (*.pro)"));
 
@@ -123,7 +122,7 @@ void MaintenanceHelperPlugin::triggerStartTracking()
         QString project = fileName.section(QString::fromStdString("/"), -1);
         QString projectPath = fileName.section(QString::fromStdString("/"), 0, -2);
 
-        if (trackedProjects.contains(project)) {
+        if (trackedProjectsMap.contains(project)) {
             // already tracking project
             QMessageBox::warning(Core::ICore::mainWindow(),
                                  tr("Tracking failed"),
@@ -132,8 +131,9 @@ void MaintenanceHelperPlugin::triggerStartTracking()
             // add to tracked projects
             QSettings settings(QString::fromStdString("Detlev"), QString::fromStdString("MaintenanceHelper"));
             settings.setValue(project, projectPath);
-            trackedProjects.insert(project, projectPath);
-            projectTraceabilities.insert(project, new ProjectTraceability(projectPath));
+            trackedProjectsMap.insert(project, projectPath);
+            projectChangesMap.insert(project, new ProjectChanges(projectPath));
+            projectTraceabilityMap.insert(project, new ProjectTraceability(projectPath));
             QMessageBox::information(Core::ICore::mainWindow(),
                                      tr("Tracking started"),
                                      tr("Now tracking: ").append(project));
@@ -144,7 +144,7 @@ void MaintenanceHelperPlugin::triggerStartTracking()
 void MaintenanceHelperPlugin::triggerStartAnalysis()
 {
     // select project to analyse
-    QStringList projects = trackedProjects.keys();
+    QStringList projects = trackedProjectsMap.keys();
 
     if (projects.isEmpty()) {
         QMessageBox::warning(Core::ICore::mainWindow(),
@@ -156,27 +156,27 @@ void MaintenanceHelperPlugin::triggerStartAnalysis()
                                              tr("Select Project"), projects, 0, false, &ok);
 
         if (ok && !project.isEmpty()) {
-            connect(projectTraceabilities.value(project), SIGNAL(linkCreationComplete(QString)), this, SLOT(analysisComplete(QString)));
-            projectTraceabilities.value(project)->createLinks();
+            connect(projectTraceabilityMap.value(project), SIGNAL(linkCreationComplete(QString)), this, SLOT(analysisComplete(QString)));
+            projectTraceabilityMap.value(project)->createLinks();
         }
     }
 }
 
 void MaintenanceHelperPlugin::analysisComplete(QString projectPath)
 {
-    QString project = trackedProjects.key(projectPath);
+    QString project = trackedProjectsMap.key(projectPath);
 
     QMessageBox::information(Core::ICore::mainWindow(),
                              tr("Analysis complete"),
                              tr("Completed analysis: ").append(project));
 
-    disconnect(projectTraceabilities.value(project), SIGNAL(linkCreationComplete(QString)), this, SLOT(analysisComplete(QString)));
+    disconnect(projectTraceabilityMap.value(project), SIGNAL(linkCreationComplete(QString)), this, SLOT(analysisComplete(QString)));
 }
 
 void MaintenanceHelperPlugin::triggerGiveHelp()
 {
     // select project to give help for
-    QStringList projects = trackedProjects.keys();
+    QStringList projects = trackedProjectsMap.keys();
 
     if (projects.isEmpty()) {
         QMessageBox::warning(Core::ICore::mainWindow(),
@@ -192,91 +192,12 @@ void MaintenanceHelperPlugin::triggerGiveHelp()
     }
 }
 
-void MaintenanceHelperPlugin::fileModified(QmlJS::Document::Ptr doc)
-{
-    foreach (const QString &projectPath, trackedProjects.values()) {
-        if (doc->path().contains(projectPath) && !modifiedFiles.contains(projectPath, doc->fileName())) {
-            modifiedFiles.insert(projectPath, doc->fileName());
-        }
-    }
-}
-
-void MaintenanceHelperPlugin::fileDeleted(const QStringList &files)
-{
-    foreach (const QString &file, files) {
-        foreach (const QString &projectPath, trackedProjects.values()) {
-            if (file.contains(projectPath) && !deletedFiles.contains(projectPath, file)) {
-                modifiedFiles.remove(projectPath, file);
-                deletedFiles.insert(projectPath, file);
-            }
-        }
-    }
-}
-
-void MaintenanceHelperPlugin::loadFileChanges()
-{
-    modifiedFiles.clear();
-    deletedFiles.clear();
-
-    foreach (const QString &projectPath, trackedProjects.values()) {
-        QFile changesFile(projectPath + QString::fromStdString("/MHchanges.txt"));
-
-        if (changesFile.exists()) {
-            changesFile.open(QFile::ReadOnly | QFile::Text);
-            QTextStream in(&changesFile);
-
-            QString line = in.readLine();
-            while (!line.isNull()) {
-                QString change = line.section(QString::fromStdString(":"), 0, 0);
-                QString files = line.section(QString::fromStdString(":"), 1, 1);
-
-                foreach (const QString &file, files.split(QString::fromStdString(","), QString::SkipEmptyParts)) {
-                    if (change == QString::fromStdString("modified")) {
-                        modifiedFiles.insert(projectPath, file);
-                    } else if (change == QString::fromStdString("deleted")) {
-                        deletedFiles.insert(projectPath, file);
-                    }
-                }
-
-                line = in.readLine();
-            }
-        }
-    }
-}
-
-void MaintenanceHelperPlugin::saveFileChanges()
-{
-    foreach (const QString &projectPath, trackedProjects.values()) {
-        QFile changesFile(projectPath + QString::fromStdString("/MHchanges.txt"));
-        changesFile.open(QFile::ReadWrite | QFile::Truncate | QFile::Text);
-        QTextStream out(&changesFile);
-
-        out << "modified" << ":";
-        foreach (const QString &file, modifiedFiles.values(projectPath)) {
-            out << file << ",";
-        }
-        out << endl;
-
-        out << "deleted" << ":";
-        foreach (const QString &file, deletedFiles.values(projectPath)) {
-            out << file << ",";
-        }
-        out << endl;
-
-        changesFile.close();
-    }
-
-    modifiedFiles.clear();
-    deletedFiles.clear();
-}
-
 void MaintenanceHelperPlugin::maintenanceHelp(const QString &project)
 {
-    projectTraceabilities.value(project)->loadLinks();
-    QString projectPath = trackedProjects.value(project);
+    projectTraceabilityMap.value(project)->loadLinks();
     QString theHelp;
 
-    foreach (const QString &file, modifiedFiles.values(projectPath)) {
+    foreach (const QString &file, projectChangesMap.value(project)->getModifiedFiles()) {
         QString baseName = file.section(QString::fromStdString("/"), -1);
 
         if (!baseName.startsWith(QString::fromStdString("tst_"))) {
@@ -284,7 +205,7 @@ void MaintenanceHelperPlugin::maintenanceHelp(const QString &project)
             theHelp.append(baseName);
             theHelp.append(QString::fromStdString(", check:\n"));
 
-            foreach (const QString &test, projectTraceabilities.value(project)->values(file)) {
+            foreach (const QString &test, projectTraceabilityMap.value(project)->values(file)) {
                 theHelp.append(QString::fromStdString("   "));
                 theHelp.append(test);
                 theHelp.append(QString::fromStdString("\n"));
@@ -294,7 +215,7 @@ void MaintenanceHelperPlugin::maintenanceHelp(const QString &project)
         }
     }
 
-    foreach (const QString &file, deletedFiles.values(projectPath)) {
+    foreach (const QString &file, projectChangesMap.value(project)->getDeletedFiles()) {
         QString baseName = file.section(QString::fromStdString("/"), -1);
 
         if (!baseName.startsWith(QString::fromStdString("tst_"))) {
@@ -302,7 +223,7 @@ void MaintenanceHelperPlugin::maintenanceHelp(const QString &project)
             theHelp.append(baseName);
             theHelp.append(QString::fromStdString(", check:\n"));
 
-            foreach (const QString &test, projectTraceabilities.value(project)->values(file)) {
+            foreach (const QString &test, projectTraceabilityMap.value(project)->values(file)) {
                 theHelp.append(QString::fromStdString("   "));
                 theHelp.append(test);
                 theHelp.append(QString::fromStdString("\n"));

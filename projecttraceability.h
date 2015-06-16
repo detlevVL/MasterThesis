@@ -7,7 +7,6 @@
 #include <qmldebug/qmlprofilertraceclient.h>
 
 #include <QObject>
-#include <QMultiHash>
 #include <QFileInfoList>
 #include <QProcess>
 

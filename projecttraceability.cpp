@@ -2,13 +2,9 @@
 
 #include <coreplugin/icore.h>
 
-#include <QDir>
-#include <QFile>
 #include <QFileDialog>
 #include <QInputDialog>
-#include <QProcess>
 #include <QTimer>
-#include <QTextStream>
 
 #include <iostream>
 
