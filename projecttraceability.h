@@ -1,5 +1,5 @@
-#ifndef PROJECTLINKS_H
-#define PROJECTLINKS_H
+#ifndef PROJECTTRACEABILITY_H
+#define PROJECTTRACEABILITY_H
 
 #include "eventinfo.h"
 
@@ -54,4 +54,4 @@ private:
     QList<eventInfo> eventList;
 };
 
-#endif // PROJECTLINKS_H
+#endif // PROJECTTRACEABILITY_H
