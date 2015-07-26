@@ -1,16 +1,9 @@
 #ifndef PROJECTTRACEABILITY_H
 #define PROJECTTRACEABILITY_H
 
-#include "eventinfo.h"
-
-#include <qmldebug/qmldebugclient.h>
-#include <qmldebug/qmlprofilertraceclient.h>
-
 #include <QObject>
-#include <QFileInfoList>
-#include <QProcess>
 
-using namespace QmlDebug;
+#include "dynamicanalysis.h"
 
 class ProjectTraceability : public QObject
 {
@@ -18,7 +11,9 @@ class ProjectTraceability : public QObject
 public:
     explicit ProjectTraceability(QString projectPath, QObject *parent = 0);
     QList<QString> values(QString sourceFile);
-    void createLinks();
+    void createLinks(QList<QString> sources, QList<QString> tests,
+                     QList<QString> modifiedSources, QList<QString> modifiedTests,
+                     QList<QString> deletedSources, QList<QString> deletedTests);
     void loadLinks();
 
 signals:
@@ -27,31 +22,18 @@ signals:
 public slots:
 
 private slots:
-    void receiveEv(QmlDebug::Message message, QmlDebug::RangeType rangeType, int bindingType,
-                         qint64 startTime, qint64 length, const QString &data,
-                         const QmlDebug::QmlEventLocation &location,
-                         qint64 ndata1, qint64 ndata2, qint64 ndata3, qint64 ndata4, qint64 ndata5);
-    void logState(const QString &);
-    void qmlDebugConnectionOpened();
-    void qmlDebugConnectionClosed();
-    void connectToDebugService();
+    void dynamicAnalysisComplete(QMultiHash<QString, QString> dynamicLinks);
 
 private:
-    void dynamicAnalysisComplete();
+    void deleteLinks(QList<QString> deletedSources, QList<QString> deletedTests);
     void saveLinks();
     void addLink(const QString &source, const QString &test);
-    void namingAnalysis();
-    void scanDirectory(const QFileInfoList &fileInfoList, QStringList &sources, QStringList &tests);
-    void dynamicAnalysis();
-    void prepareConnection();
-    void createDynamicLinks();
+    void addLinks(QMultiHash<QString, QString> toAdd);
+
 
     QString projectPath;
     QMultiHash<QString, QString> links;
-    QProcess *process;
-    QmlDebugConnection *connection;
-    QmlProfilerTraceClient *qmlclientplugin;
-    QList<eventInfo> eventList;
+    DynamicAnalysis *dynamicAnalysis;
 };
 
 #endif // PROJECTTRACEABILITY_H

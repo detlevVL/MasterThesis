@@ -6,14 +6,18 @@ QT += network
 
 SOURCES += maintenancehelperplugin.cpp \
     projecttraceability.cpp \
-    projectchanges.cpp
+    projectchanges.cpp \
+    naminganalysis.cpp \
+    dynamicanalysis.cpp
 
 HEADERS += maintenancehelperplugin.h \
         maintenancehelper_global.h \
         maintenancehelperconstants.h \
     projecttraceability.h \
     eventinfo.h \
-    projectchanges.h
+    projectchanges.h \
+    naminganalysis.h \
+    dynamicanalysis.h
 
 # Qt Creator linking
 

@@ -7,8 +7,8 @@
 
 #include <qmljs/qmljsmodelmanagerinterface.h>
 
-#include <projecttraceability.h>
-#include <projectchanges.h>
+#include "projecttraceability.h"
+#include "projectchanges.h"
 
 using namespace QmlJS;
 
@@ -40,6 +40,7 @@ private:
     QMap<QString,QString> trackedProjectsMap;
     QMap<QString,ProjectTraceability*> projectTraceabilityMap;
     QMap<QString,ProjectChanges*> projectChangesMap;
+    QMap<QString,QDateTime> lastAnalysisMap;
 };
 
 } // namespace Internal
