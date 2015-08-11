@@ -7,11 +7,9 @@
 #include <QTextStream>
 #include <QTimer>
 
-#include <iostream>
 
 #include "naminganalysis.h"
 
-using namespace std;
 
 
 ProjectTraceability::ProjectTraceability(QString projectPath, QObject *parent) : QObject(parent)

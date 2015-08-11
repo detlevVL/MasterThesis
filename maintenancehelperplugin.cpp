@@ -18,7 +18,6 @@
 
 #include <QtPlugin>
 
-
 using namespace MaintenanceHelper::Internal;
 
 MaintenanceHelperPlugin::MaintenanceHelperPlugin()
@@ -220,42 +219,150 @@ void MaintenanceHelperPlugin::maintenanceHelp(const QString &project)
 {
     projectTraceabilityMap.value(project)->loadLinks();
     QString theHelp;
+    QSet<QString> testsToRun;
 
-    foreach (const QString &file, projectChangesMap.value(project)->getModifiedSourceFiles(lastAnalysisMap.value(project))) {
-        QString baseName = file.section(QString::fromStdString("/"), -1);
+    if (projectChangesMap.value(project)->getModifiedFiles(lastAnalysisMap.value(project)).size() == 0 &&
+            projectChangesMap.value(project)->getDeletedFiles(lastAnalysisMap.value(project)).size() == 0) {
+        QMessageBox::information(Core::ICore::mainWindow(),
+                             tr("Maintenance Help"),
+                             tr("There are no modified/deleted files since last analysis"));
+    } else {
+        theHelp.append(QString::fromStdString("Source files:\n"));
+        foreach (const QString &file, projectChangesMap.value(project)->getModifiedSourceFiles(lastAnalysisMap.value(project))) {
+            QString baseName = file.section(QString::fromStdString("/"), -1);
 
-        theHelp.append(QString::fromStdString("Modified "));
-        theHelp.append(baseName);
-        theHelp.append(QString::fromStdString(", check:\n"));
+            theHelp.append(QString::fromStdString("Modified "));
+            theHelp.append(baseName);
+            theHelp.append(QString::fromStdString(", to run:\n"));
 
-        foreach (const QString &test, projectTraceabilityMap.value(project)->values(file)) {
-            theHelp.append(QString::fromStdString("   "));
-            theHelp.append(test);
+            foreach (const QString &test, projectTraceabilityMap.value(project)->values(file)) {
+                theHelp.append(QString::fromStdString("   "));
+                theHelp.append(test);
+                theHelp.append(QString::fromStdString("\n"));
+                testsToRun.insert(test);
+            }
+
             theHelp.append(QString::fromStdString("\n"));
         }
 
-        theHelp.append(QString::fromStdString("\n"));
-    }
+        foreach (const QString &file, projectChangesMap.value(project)->getDeletedSourceFiles(lastAnalysisMap.value(project))) {
+            QString baseName = file.section(QString::fromStdString("/"), -1);
 
-    foreach (const QString &file, projectChangesMap.value(project)->getDeletedSourceFiles(lastAnalysisMap.value(project))) {
-        QString baseName = file.section(QString::fromStdString("/"), -1);
+            theHelp.append(QString::fromStdString("Deleted "));
+            theHelp.append(baseName);
+            theHelp.append(QString::fromStdString(", to run:\n"));
 
-        theHelp.append(QString::fromStdString("Deleted "));
-        theHelp.append(baseName);
-        theHelp.append(QString::fromStdString(", check:\n"));
+            foreach (const QString &test, projectTraceabilityMap.value(project)->values(file)) {
+                theHelp.append(QString::fromStdString("   "));
+                theHelp.append(test);
+                theHelp.append(QString::fromStdString("\n"));
+                testsToRun.insert(test);
+            }
 
-        foreach (const QString &test, projectTraceabilityMap.value(project)->values(file)) {
-            theHelp.append(QString::fromStdString("   "));
-            theHelp.append(test);
             theHelp.append(QString::fromStdString("\n"));
         }
 
-        theHelp.append(QString::fromStdString("\n"));
+        theHelp.append(QString::fromStdString("Modified test files:\n"));
+        foreach (const QString &test, projectChangesMap.value(project)->getModifiedTestFiles(lastAnalysisMap.value(project))) {
+            theHelp.append(QString::fromStdString("   "));
+            theHelp.append(test);
+            theHelp.append(QString::fromStdString("\n"));
+            testsToRun.insert(test);
+        }
+
+        QPlainTextEdit *text = new QPlainTextEdit(theHelp);
+        text->setReadOnly(true);
+        text->setWindowTitle(QString::fromStdString("Maintenance Help"));
+        text->show();
+
+        int ret = QMessageBox::question(text, QString::fromStdString("Run tests"),
+                                        QString::fromStdString("Run these tests now? (See Maintenance Help window)"),
+                                        (QMessageBox::Yes|QMessageBox::No), QMessageBox::No);
+        if (ret == QMessageBox::Yes) {
+            text->close();
+            runTests(testsToRun);
+        } else {
+            text->close();
+        }
+    }
+}
+
+void MaintenanceHelperPlugin::runTests(QSet<QString> testsToRun)
+{
+    // select executable
+    QString program = QFileDialog::getOpenFileName(Core::ICore::mainWindow(), tr("Select Executable for Running Tests"),
+                                              QDir::homePath(),
+                                              tr("Executable Files (*)"));
+
+    if (!program.isEmpty() && QFileInfo(program).isExecutable()) {
+        // get input arguments
+        bool ok;
+        QList<QString> arguments;
+        QString text = QInputDialog::getText(Core::ICore::mainWindow(), tr("Input Arguments"),
+                                             tr("Enter Input Arguments:"), QLineEdit::Normal,
+                                             tr(""), &ok);
+        if (ok && !text.isEmpty()) {
+            foreach (const QString &argument, text.split(QString::fromStdString(" "), QString::SkipEmptyParts)) {
+                arguments << argument;
+            }
+        }
+
+        QString output;
+        int passed = 0;
+        int failed = 0;
+        int skipped = 0;
+        int blacklisted = 0;
+
+        foreach (const QString &test,testsToRun) {
+
+            // Copy arguments
+            QList<QString> argumentsToUse;
+            foreach (const QString &argument, arguments) {
+                argumentsToUse << argument;
+            }
+
+            argumentsToUse << QString::fromStdString("-input") << test;
+
+            QProcess process;
+            process.start(program, argumentsToUse);
+            process.waitForFinished();
+
+            QString testOutput = QString::fromStdString(process.readAllStandardOutput().toStdString());
+            output.append(testOutput);
+
+            // find passed, failed, skipped, blacklisted results
+            QRegExp regExp(QString::fromStdString("Totals: (\\d+) passed, (\\d+) failed, (\\d+) skipped, (\\d+) blacklisted"));
+
+            int pos = regExp.indexIn(testOutput);
+            if (pos > -1) {
+                passed += regExp.cap(1).toInt();
+                failed += regExp.cap(2).toInt();
+                skipped += regExp.cap(3).toInt();
+                blacklisted += regExp.cap(4).toInt();
+            }
+        }
+
+        // total results string to prepend to output
+        QString toPrepend;
+
+        toPrepend.append(QString::fromStdString("Totals: "));
+        toPrepend.append(QString::number(passed));
+        toPrepend.append(QString::fromStdString(" passed, "));
+        toPrepend.append(QString::number(failed));
+        toPrepend.append(QString::fromStdString(" failed, "));
+        toPrepend.append(QString::number(skipped));
+        toPrepend.append(QString::fromStdString(" skipped, "));
+        toPrepend.append(QString::number(blacklisted));
+        toPrepend.append(QString::fromStdString(" blacklisted\n\n"));
+
+        output.prepend(toPrepend);
+
+        // show output
+        QPlainTextEdit *result = new QPlainTextEdit(output);
+        result->setReadOnly(true);
+        result->setWindowTitle(QString::fromStdString("Test Results"));
+        result->show();
     }
 
-    QPlainTextEdit *text = new QPlainTextEdit(theHelp);
-    text->setReadOnly(true);
-    text->setWindowTitle(QString::fromStdString("Maintenance Help"));
-    text->show();
 }
 

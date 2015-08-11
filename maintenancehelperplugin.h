@@ -36,6 +36,7 @@ private slots:
 
 private:
     void maintenanceHelp(const QString &project);
+    void runTests(QSet<QString> testsToRun);
 
     QMap<QString,QString> trackedProjectsMap;
     QMap<QString,ProjectTraceability*> projectTraceabilityMap;

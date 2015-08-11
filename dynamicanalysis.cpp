@@ -58,7 +58,7 @@ void DynamicAnalysis::receiveEv(Message message, RangeType rangeType, int bindin
     foreach (const QString &source, sources) {
         QString baseSource = source.section(QString::fromStdString("/"), -1);
         if (eventBaseFile.compare(baseSource, Qt::CaseInsensitive) == 0) {
-            eventList.append(eventInfo(startTime, length, data, location.filename, location.line, location.column));
+            eventList.append(eventInfo(startTime, length, data, source, location.line, location.column));
         }
     }
 
@@ -183,7 +183,7 @@ void DynamicAnalysis::createDynamicLinks()
                 // add set of sourcefiles from the previous file to the project links
                 foreach (const QString &source, sourceFiles) {
                     links.insert(source,prevTestFile);
-                    cout << "DyLink: " << source.toStdString() << " - " << testFile.toStdString() << endl;
+                    cout << "DyLink1: " << source.toStdString() << " - " << testFile.toStdString() << endl;
                 }
 
                 // clear set of sourcefiles to prepare for the new test file
@@ -202,7 +202,7 @@ void DynamicAnalysis::createDynamicLinks()
     // because the last test file is not handled within the above loop
     foreach (const QString &source, sourceFiles) {
         links.insert(source,testFile);
-        cout << "DyLink: " << source.toStdString() << " - " << testFile.toStdString() << endl;
+        cout << "DyLink2: " << source.toStdString() << " - " << testFile.toStdString() << endl;
     }
 
     eventList.clear();
