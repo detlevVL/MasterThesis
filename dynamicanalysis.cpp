@@ -183,7 +183,6 @@ void DynamicAnalysis::createDynamicLinks()
                 // add set of sourcefiles from the previous file to the project links
                 foreach (const QString &source, sourceFiles) {
                     links.insert(source,prevTestFile);
-                    cout << "DyLink1: " << source.toStdString() << " - " << testFile.toStdString() << endl;
                 }
 
                 // clear set of sourcefiles to prepare for the new test file
@@ -202,7 +201,6 @@ void DynamicAnalysis::createDynamicLinks()
     // because the last test file is not handled within the above loop
     foreach (const QString &source, sourceFiles) {
         links.insert(source,testFile);
-        cout << "DyLink2: " << source.toStdString() << " - " << testFile.toStdString() << endl;
     }
 
     eventList.clear();

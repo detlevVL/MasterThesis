@@ -110,7 +110,7 @@ void ProjectTraceability::saveLinks()
 
 void ProjectTraceability::addLink(const QString &source, const QString &test)
 {
-    if (!links.contains(source,test)) {
+    if (!links.contains(source,test) && !source.contains(QString::fromStdString("tst_"))) {
         links.insert(source, test);
     }
 }
